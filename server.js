@@ -5,44 +5,32 @@ const url = require('url');
 const port = process.env.PORT || 10000; 
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Server di streaming attivo!');
+    res.end('Server attivo!');
 });
 
 const wss = new WebSocket.Server({ server });
-
 let esp32Socket = null;
 let contatoreBrowser = 0;
-
+//____________________________________
+// CHIAVE SEGRETA PERSONALIZZATA
+const CHIAVE_SICUREZZA = "Sisifo@123";
+//____________________________________
 wss.on('connection', (ws, req) => {
     const parameters = url.parse(req.url, true).query;
     const role = parameters.role;
+    const token = parameters.token; // <--- Legge il token inviato dall'URL
 
-    // Gestione degli errori sulla singola connessione per evitare crash del server
-    ws.on('error', (err) => console.error('Errore socket:', err.message));
+    // --- BLOCCO DI SICUREZZA: Controlla se la chiave è corretta ---
+    if (token !== CHIAVE_SICUREZZA) {
+        console.log("Tentativo di connessione rifiutato: Chiave errata o mancante.");
+        ws.close(); 
+        return; 
+    }
 
     if (role === 'esp32') {
         esp32Socket = ws;
-        console.log('ESP32-CAM connesso su Render.');
-        
-        // Se c'erano già browser in attesa, dice all'ESP32 di partire subito
-        if (contatoreBrowser > 0) {
-            ws.send('START');
-        }
-
-        // Ascolta i messaggi dell'ESP32 e li invia SOLO ai browser
-        ws.on('message', (message) => {
-            wss.clients.forEach((client) => {
-                // Invia il frame solo se il client è aperto e NON è l'ESP32 stesso
-                if (client !== ws && client.readyState === WebSocket.OPEN) {
-                    // Il blocco try-catch previene il crash se il browser si disconnette a metà invio
-                    try {
-                        client.send(message); 
-                    } catch (e) {
-                        console.error('Errore invio al browser:', e.message);
-                    }
-                }
-            });
-        });
+        console.log('ESP32-CAM connesso.');
+        if (contatoreBrowser > 0) ws.send('START');
 
         ws.on('close', () => {
             console.log('ESP32-CAM disconnesso.');
@@ -51,28 +39,32 @@ wss.on('connection', (ws, req) => {
 
     } else if (role === 'browser') {
         contatoreBrowser++;
-        console.log(`PC connesso. Spettatori totali: ${contatoreBrowser}`);
+        console.log(`PC connesso. Spettatori: ${contatoreBrowser}`);
 
-        // Se è il primo browser, sveglia l'ESP32
         if (contatoreBrowser === 1 && esp32Socket && esp32Socket.readyState === WebSocket.OPEN) {
             esp32Socket.send('START');
         }
 
         ws.on('close', () => {
             contatoreBrowser--;
-            console.log(`PC disconnesso. Spettatori rimanenti: ${contatoreBrowser}`);
-            
-            // Se non ci sono più spettatori, ferma l'ESP32 per risparmiare banda
+            console.log(`PC disconnesso. Spettatori: ${contatoreBrowser}`);
             if (contatoreBrowser === 0 && esp32Socket && esp32Socket.readyState === WebSocket.OPEN) {
                 esp32Socket.send('STOP');
             }
         });
     } else {
-        // Chiude la connessione se il ruolo non è valido
         ws.close();
+    }
+
+    if (role === 'esp32') {
+        ws.on('message', (message) => {
+            wss.clients.forEach((client) => {
+                if (client !== ws && client.readyState === WebSocket.OPEN) {
+                    client.send(message); 
+                }
+            });
+        });
     }
 });
 
-server.listen(port, () => {
-    console.log(`Server WebSocket in ascolto sulla porta ${port}`);
-});
+server.listen(port);
