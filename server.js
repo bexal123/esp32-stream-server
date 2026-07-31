@@ -13,7 +13,7 @@ let esp32Socket = null;
 let contatoreBrowser = 0;
 //____________________________________
 // CHIAVE SEGRETA PERSONALIZZATA
-const CHIAVE_SICUREZZA = "Sisifo@123";
+const CHIAVE_SICUREZZA = "Stocazzo@123";
 //____________________________________
 wss.on('connection', (ws, req) => {
     const parameters = url.parse(req.url, true).query;
