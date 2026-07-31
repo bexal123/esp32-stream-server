@@ -27,15 +27,19 @@ wss.on('connection', (ws, req) => {
         return; 
     }
 
-    if (role === 'esp32') {
-        esp32Socket = ws;
-        console.log('ESP32-CAM connesso.');
-        if (contatoreBrowser > 0) ws.send('START');
+ if (role === 'esp32') {
+        ws.on('message', (message) => {
+            // Converte il Buffer ricevuto da Python in stringa Base64 pulita
+            const stringaBase64 = message.toString('utf-8');
 
-        ws.on('close', () => {
-            console.log('ESP32-CAM disconnesso.');
-            esp32Socket = null;
+            wss.clients.forEach((client) => {
+                // Invia la stringa come testo puro a tutti i browser connessi
+                if (client !== ws && client.readyState === WebSocket.OPEN) {
+                    client.send(stringaBase64); 
+                }
+            });
         });
+    }
 
     } else if (role === 'browser') {
         contatoreBrowser++;
